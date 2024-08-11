@@ -23,3 +23,10 @@ pub enum Token {
     IntegerLiteral(i32),
     FloatLiteral(f32),
 }
+
+impl Token {
+    pub fn make_ident(s: String) -> Token {
+        return Token::Ident(s);
+    }
+
+}

@@ -1,15 +1,15 @@
-use crate::token::Token;
+use crate::token::{self, Token};
 use std::fmt::Display;
 
 #[derive(Debug, PartialEq, Eq)]
 enum InvalidIdentifierReason {
-    StartsWithNumber,
+    InvalidCharsFound(u32),
 }
 
 impl Display for InvalidIdentifierReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg = match self {
-            Self::StartsWithNumber => "Identifier Cannot Start With Number",
+            Self::InvalidCharsFound(ix) => format!("Found Illegal Characters In Identifier: Invalids First Found At Position `{}`", ix),
         };
         write!(f, "{}", msg)
     }
@@ -19,6 +19,7 @@ impl Display for InvalidIdentifierReason {
 enum LexError {
     UnknownToken(IndexedCh),
     InvalidIdentifier((String, InvalidIdentifierReason)),
+    InvalidNumeric((String, InvalidIdentifierReason)),
 }
 
 impl LexError {
@@ -33,6 +34,9 @@ impl LexError {
             Self::InvalidIdentifier((str, reason)) => {
                 format!("Invalid Identifer: `{}` - {}", str, reason)
             }
+            Self::InvalidNumeric((str, reason)) => {
+                format!("Invalid Numeric: `{}` - {}", str, reason)
+            }
         }
     }
 }
@@ -44,6 +48,15 @@ impl Display for LexError {
 }
 
 type IndexedCh = (u32, char);
+
+static IDENT_TERMINATORS: &[char] = &[' ', '\n', '(', '{', '['];
+
+pub fn is_terminator(c: char) -> bool {
+    match c {
+        ' ' | '\n' | '(' | '{' | '[' => true,
+        _ => false,
+    }
+}
 
 struct Lexer<I>
 where
@@ -105,15 +118,29 @@ where
     pub fn lex_numeric(&mut self) -> Result<Token, LexError> {
         let mut acc = String::new();
         let mut is_float = false;
+        let mut err_found_at = None;
 
-        while self.is_curr_char_numeric() {
-            let (_, ch) = self
+        while !self.is_curr_pattern_terminated() {
+            let (ix, ch) = self
                 .next_char()
                 .expect("lex_numeric `should be pre-checked`");
             if ch == '.' {
                 is_float = true
             };
+
+            if !self.is_curr_char_part_of_numeric(ch) && err_found_at.is_none()
+            {
+                err_found_at = Some(ix);
+            }
+
             acc.push(ch);
+        }
+
+        if let Some(err_ix) = err_found_at {
+            return Err(LexError::InvalidNumeric((
+                acc,
+                InvalidIdentifierReason::InvalidCharsFound(err_ix),
+            )));
         }
 
         match is_float {
@@ -134,16 +161,26 @@ where
 
     pub fn lex_ident(&mut self) -> Result<Token, LexError> {
         let mut acc = String::new();
-        while self.is_curr_char_part_of_ident() {
-            let (_, ch) = self
+        let mut err_started_at = None;
+
+        while !self.is_curr_pattern_terminated() {
+            let (ix, ch) = self
                 .next_char()
-                .expect("lex_literal `already checked token`");
+                .expect("lex_ident `should have checked char`");
+
+            if !self.is_part_of_ident(ch) && err_started_at.is_none() {
+                err_started_at = Some(ix);
+            }
+
             acc.push(ch);
         }
-        if let Some(keyword) = self.get_keyword(&acc) {
-            return Ok(keyword);
+
+        if let Some(err_ix) = err_started_at {
+            let reason = InvalidIdentifierReason::InvalidCharsFound(err_ix);
+            return Err(LexError::InvalidIdentifier((acc, reason)));
         }
-        return Ok(Token::Ident(acc));
+
+        return Ok(self.get_keyword(&acc).unwrap_or(Token::Ident(acc)));
     }
 
     pub fn get_keyword(&self, s: &String) -> Option<Token> {
@@ -157,18 +194,23 @@ where
         });
     }
 
-    pub fn is_curr_char_numeric(&self) -> bool {
+    pub fn is_curr_char_numeric(ch: char) -> bool {
+        return ch.is_numeric() || ch == '.' || ch == '_';
+    }
+
+    pub fn is_curr_pattern_terminated(&self) -> bool {
         return match self.curr_ch {
-            Some((_, ch)) if ch.is_numeric() || ch == '.' || ch == '_' => true,
+            Some((_, ch)) if is_terminator(ch) => true,
+            None => true,
             _ => false,
         };
     }
 
-    pub fn is_curr_char_part_of_ident(&self) -> bool {
-        return match self.curr_ch {
-            Some((_, ch)) if ch.is_alphanumeric() || ch == '_' => true,
-            _ => false,
-        };
+    pub fn is_curr_char_part_of_numeric(&self, ch: char) -> bool {
+        return ch.is_numeric() || ch == '.' || ch == '_';
+    }
+    pub fn is_part_of_ident(&self, ch: char) -> bool {
+        return ch.is_alphanumeric() || ch == '_';
     }
 }
 
@@ -266,11 +308,17 @@ fn test_lexer_lex_keywords() {
 
 #[test]
 fn test_error_unknown_char() {
-    let prg = "if|";
+    let prg = "name|";
     let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
 
     let should_be_err = l.lex();
-    assert_eq!(should_be_err, Err(LexError::UnknownToken((2, '|'))));
+    assert_eq!(
+        should_be_err,
+        Err(LexError::InvalidIdentifier((
+            prg.to_string(),
+            InvalidIdentifierReason::InvalidCharsFound(4)
+        )))
+    );
 }
 
 #[test]
@@ -281,9 +329,9 @@ fn test_error_numeric_alpha() {
     let should_be_err = l.lex();
     assert_eq!(
         should_be_err,
-        Err(LexError::InvalidIdentifier((
+        Err(LexError::InvalidNumeric((
             "190ab".to_string(),
-            InvalidIdentifierReason::StartsWithNumber
+            InvalidIdentifierReason::InvalidCharsFound(3)
         )))
     );
 }
