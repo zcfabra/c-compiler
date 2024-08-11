@@ -49,11 +49,9 @@ impl Display for LexError {
 
 type IndexedCh = (u32, char);
 
-static IDENT_TERMINATORS: &[char] = &[' ', '\n', '(', '{', '['];
-
 pub fn is_terminator(c: char) -> bool {
     match c {
-        ' ' | '\n' | '(' | '{' | '[' => true,
+        ' ' | '\n' | '(' | '{' | '[' | ')' | '}' | ']' => true,
         _ => false,
     }
 }
@@ -77,12 +75,12 @@ where
             curr_ch: None,
             peek_ch: None,
         };
-        let _ = l.next_char();
-        let _ = l.next_char();
+        let _ = l.consume_curr_char();
+        let _ = l.consume_curr_char();
         return l;
     }
 
-    pub fn next_char(&mut self) -> Option<IndexedCh> {
+    pub fn consume_curr_char(&mut self) -> Option<IndexedCh> {
         // Advance the iterator while also returning the
 
         let curr_ch = self.curr_ch;
@@ -101,7 +99,17 @@ where
 
         while let Some((ix, ch)) = self.curr_ch {
             match ch {
-                ' ' | '\n' | '\t' => _ = self.next_char(),
+                ' ' | '\n' | '\t' => _ = self.consume_curr_char(),
+                sc@('(' | ')' | '{' | '}' | '[' | ']' | ';') => {
+                    tokens.push(self.get_single_char_token(sc, ix)?);
+                }
+                dc@('=' | '!' | '+' | '-' | '/' | '*') => {
+                    let tok = match self.get_double_char_token(dc, ix) {
+                        Some(tok) => Ok(tok),
+                        None => self.get_single_char_token(ch, ix)
+                    }?;
+                    tokens.push(tok);
+                }
                 c => {
                     let tok = match c {
                         '0'..='9' => self.lex_numeric(),
@@ -122,7 +130,7 @@ where
 
         while !self.is_curr_pattern_terminated() {
             let (ix, ch) = self
-                .next_char()
+                .consume_curr_char()
                 .expect("lex_numeric `should be pre-checked`");
             if ch == '.' {
                 is_float = true
@@ -165,7 +173,7 @@ where
 
         while !self.is_curr_pattern_terminated() {
             let (ix, ch) = self
-                .next_char()
+                .consume_curr_char()
                 .expect("lex_ident `should have checked char`");
 
             if !self.is_part_of_ident(ch) && err_started_at.is_none() {
@@ -183,6 +191,47 @@ where
         return Ok(self.get_keyword(&acc).unwrap_or(Token::Ident(acc)));
     }
 
+    pub fn get_single_char_token(&mut self, ch: char, ix: u32) -> Result<Token, LexError> {
+        let tok = Ok(match ch {
+            '(' => Token::LPAREN,
+            ')' => Token::RPAREN,
+            '{' => Token::LBRACE,
+            '}' => Token::RBRACE,
+            ';' => Token::SEMICOLON,
+
+            '+' => Token::ADD,
+            '-' => Token::SUB,
+            '*' => Token::STAR,
+            '/' => Token::DIV,
+
+            '!' => Token::NOT,
+
+            '=' => Token::ASSIGN,
+            _ => return Err(LexError::UnknownToken((ix, ch)))
+        });
+        let _ = self.consume_curr_char();
+        return tok;
+    }
+
+    pub fn get_double_char_token(&mut self, ch: char, ix: u32) -> Option<Token> {
+        let tok = Some(match (ch, self.peek_ch) {
+            ('=', Some((_, '='))) => Token::EQ,
+            ('!', Some((_, '='))) => Token::NOT_EQ,
+            ('+', Some((_, '='))) => Token::ADD_EQ,
+            ('-', Some((_, '='))) => Token::SUB_EQ,
+            ('*', Some((_, '='))) => Token::MUL_EQ,
+            ('/', Some((_, '='))) => Token::DIV_EQ,
+            (_, _) => return None
+        });
+        // Consumes current char
+        _ = self.consume_curr_char();
+        // Consumes next char
+        _ = self.consume_curr_char();
+
+        return tok;
+        
+    }
+
     pub fn get_keyword(&self, s: &String) -> Option<Token> {
         return Some(match s.as_str() {
             "return" => Token::RETURN,
@@ -190,6 +239,12 @@ where
             "else" => Token::ELSE,
             "for" => Token::FOR,
             "while" => Token::WHILE,
+
+            // Types
+            "int" => Token::INT,
+            "void" => Token::VOID,
+            "char" => Token::CHAR,
+
             _ => return None,
         });
     }
@@ -227,15 +282,15 @@ fn test_lexer_advance() {
     let prg = "int";
     let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
     // Should make n the curr char
-    _ = l.next_char();
+    _ = l.consume_curr_char();
     assert_eq!(l.curr_ch, Some((1, 'n')));
 
     // Should make t the curr char
-    _ = l.next_char();
+    _ = l.consume_curr_char();
     assert_eq!(l.curr_ch, Some((2, 't')));
 
     // Should make None the curr char
-    _ = l.next_char();
+    _ = l.consume_curr_char();
 
     assert_eq!(l.curr_ch, None);
     assert_eq!(l.peek_ch, None);
@@ -333,5 +388,64 @@ fn test_error_numeric_alpha() {
             "190ab".to_string(),
             InvalidIdentifierReason::InvalidCharsFound(3)
         )))
+    );
+}
+
+#[test]
+fn test_if_else_parsing() {
+    let prg = "if(condition) {int i = 10 + 10} else {int i = 0};";
+    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+
+    let should_be_err = l.lex();
+    assert_eq!(
+        should_be_err,
+        Ok(vec![
+            Token::IF,
+            Token::LPAREN,
+            Token::Ident("condition".to_string()),
+            Token::RPAREN,
+            Token::LBRACE,
+            Token::INT,
+            Token::Ident("i".to_string()),
+            Token::ASSIGN,
+            Token::IntegerLiteral(10),
+            Token::ADD,
+            Token::IntegerLiteral(10),
+            Token::RBRACE,
+            Token::ELSE,
+            Token::LBRACE,
+            Token::INT,
+            Token::Ident("i".to_string()),
+            Token::ASSIGN,
+            Token::IntegerLiteral(0),
+            Token::RBRACE,
+            Token::SEMICOLON,
+        ])
+    );
+}
+
+#[test]
+fn test_operators() {
+
+    let prg = "= == + += - -= ! != * *= / /=";
+    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+
+    let should_be_err = l.lex();
+    assert_eq!(
+        should_be_err,
+        Ok(vec![
+            Token::ASSIGN,
+            Token::EQ,
+            Token::ADD,
+            Token::ADD_EQ,
+            Token::SUB,
+            Token::SUB_EQ,
+            Token::NOT,
+            Token::NOT_EQ,
+            Token::STAR,
+            Token::MUL_EQ,
+            Token::DIV,
+            Token::DIV_EQ,
+        ])
     );
 }

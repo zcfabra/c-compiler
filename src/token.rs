@@ -4,12 +4,35 @@ pub enum Token {
     RPAREN,
     LBRACE,
     RBRACE,
+    SEMICOLON,
+
+    // Operators
+    ASSIGN,
+    EQ,
+
+    ADD,
+    ADD_EQ,
+
+    SUB,
+    SUB_EQ,
+
+    NOT,
+    NOT_EQ,
     
 
+    // Not 'MUL' b/c of pointers
+    STAR,
+    MUL_EQ,
+
+    DIV,
+    DIV_EQ,
+
     // Types 
-    // INT(bool),
-    // VOID(bool),
-    // CHAR(bool),
+    POINTER,
+
+    INT,
+    VOID,
+    CHAR,
 
     // Keywords
     RETURN,
