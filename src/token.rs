@@ -1,4 +1,6 @@
-#[derive(Debug, PartialEq)]
+use std::fmt::Display;
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     LPAREN,
     RPAREN,
@@ -45,6 +47,21 @@ pub enum Token {
     Ident(String),
     IntegerLiteral(i32),
     FloatLiteral(f32),
+}
+
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut repr;
+        let display = match self {
+            Self::ADD => "+",
+            Self::IntegerLiteral(i) => {
+                repr = format!("{}", i);
+                repr.as_str()
+            },
+            _ => "NOT IMPLEMENTED"
+        };
+        write!(f, "{}", display)
+    }
 }
 
 impl Token {

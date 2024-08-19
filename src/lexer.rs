@@ -16,7 +16,7 @@ impl Display for InvalidIdentifierReason {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum LexError {
+pub enum LexError {
     UnknownToken(IndexedCh),
     InvalidIdentifier((String, InvalidIdentifierReason)),
     InvalidNumeric((String, InvalidIdentifierReason)),
@@ -51,12 +51,12 @@ type IndexedCh = (u32, char);
 
 pub fn is_terminator(c: char) -> bool {
     match c {
-        ' ' | '\n' | '(' | '{' | '[' | ')' | '}' | ']' => true,
+        ' ' | '\n' | '(' | '{' | '[' | ')' | '}' | ']' | ';' => true,
         _ => false,
     }
 }
 
-struct Lexer<I>
+pub struct Lexer<I>
 where
     I: Iterator<Item = IndexedCh>,
 {
