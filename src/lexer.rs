@@ -1,5 +1,5 @@
 use crate::token::{self, Token};
-use std::fmt::Display;
+use std::{fmt::Display, iter::Map, str::CharIndices};
 
 #[derive(Debug, PartialEq, Eq)]
 enum InvalidIdentifierReason {
@@ -54,6 +54,13 @@ pub fn is_terminator(c: char) -> bool {
         ' ' | '\n' | '(' | '{' | '[' | ')' | '}' | ']' | ';' | ',' => true,
         _ => false,
     }
+}
+
+pub fn make_lexer<'a>(
+    s: &'a String,
+) -> Lexer<Map<CharIndices<'a>, impl FnMut((usize, char)) -> (u32, char)>> {
+    let mut lx = Lexer::new(s.char_indices().map(|(i, c)| (i as u32, c)));
+    return lx;
 }
 
 pub struct Lexer<I>
@@ -279,16 +286,16 @@ where
 
 #[test]
 fn test_lexer_init() {
-    let prg = "int";
-    let l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let prg = "int".to_string();
+    let l = make_lexer(&prg);
     assert_eq!(l.curr_ch, Some((0, 'i')));
     assert_eq!(l.peek_ch, Some((1, 'n')));
 }
 
 #[test]
 fn test_lexer_advance() {
-    let prg = "int";
-    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let prg = "int".to_string();
+    let mut l = make_lexer(&prg);
     // Should make n the curr char
     _ = l.consume_curr_char();
     assert_eq!(l.curr_ch, Some((1, 'n')));
@@ -306,8 +313,8 @@ fn test_lexer_advance() {
 
 #[test]
 fn test_lexer_lex_ident() {
-    let prg = "variablename";
-    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let prg = "variablename".to_string();
+    let mut l = make_lexer(&prg);
 
     let token = l.lex_ident();
     assert_eq!(token, Ok(Token::Ident(prg.to_string())));
@@ -315,8 +322,8 @@ fn test_lexer_lex_ident() {
 
 #[test]
 fn test_lexer_lex_ident_underscores() {
-    let prg = "a_really_cool___variable_name";
-    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let prg = "a_really_cool___variable_name".to_string();
+    let mut l = make_lexer(&prg);
 
     let token = l.lex_ident();
     assert_eq!(token, Ok(Token::Ident(prg.to_string())));
@@ -324,8 +331,8 @@ fn test_lexer_lex_ident_underscores() {
 
 #[test]
 fn test_lexer_lex_ident_nums() {
-    let prg = "a_variable_112313";
-    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let prg = "a_variable_112313".to_string();
+    let mut l = make_lexer(&prg);
 
     let token = l.lex_ident();
     assert_eq!(token, Ok(Token::Ident(prg.to_string())));
@@ -335,7 +342,7 @@ fn test_lexer_lex_ident_nums() {
 fn test_lexer_lex_int() {
     let expected = 1012310293;
     let prg = format!("{}", expected);
-    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let mut l = make_lexer(&prg);
 
     let token = l.lex_numeric();
     assert_eq!(token, Ok(Token::IntegerLiteral(expected)));
@@ -345,7 +352,7 @@ fn test_lexer_lex_int() {
 fn test_lexer_lex_float() {
     let expected = 10123.10293;
     let prg = format!("{}", expected);
-    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let mut l = make_lexer(&prg);
 
     let token = l.lex_numeric();
     assert_eq!(token, Ok(Token::FloatLiteral(expected)));
@@ -353,8 +360,8 @@ fn test_lexer_lex_float() {
 
 #[test]
 fn test_lexer_lex_keywords() {
-    let prg = "return if else while for";
-    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let prg = "return if else while for".to_string();
+    let mut l = make_lexer(&prg);
 
     let toks = l.lex();
     assert_eq!(
@@ -371,8 +378,8 @@ fn test_lexer_lex_keywords() {
 
 #[test]
 fn test_error_unknown_char() {
-    let prg = "name|";
-    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let prg = "name|".to_string();
+    let mut l = make_lexer(&prg);
 
     let should_be_err = l.lex();
     assert_eq!(
@@ -386,8 +393,8 @@ fn test_error_unknown_char() {
 
 #[test]
 fn test_error_numeric_alpha() {
-    let prg = "190ab";
-    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let prg = "190ab".to_string();
+    let mut l = make_lexer(&prg);
 
     let should_be_err = l.lex();
     assert_eq!(
@@ -401,8 +408,8 @@ fn test_error_numeric_alpha() {
 
 #[test]
 fn test_if_else_parsing() {
-    let prg = "if(condition) {int i = 10 + 10} else {int i = 0};";
-    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let prg = "if(condition) {int i = 10 + 10} else {int i = 0};".to_string();
+    let mut l = make_lexer(&prg);
 
     let should_be_err = l.lex();
     assert_eq!(
@@ -434,8 +441,8 @@ fn test_if_else_parsing() {
 
 #[test]
 fn test_operators() {
-    let prg = "= == + += - -= ! != * *= / /=";
-    let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
+    let prg = "= == + += - -= ! != * *= / /=".to_string();
+    let mut l = make_lexer(&prg);
 
     let should_be_err = l.lex();
     assert_eq!(
@@ -459,9 +466,9 @@ fn test_operators() {
 
 #[test]
 fn test_lex_args() {
-    let input = "int fn(int i, int j, char k)";
-    let mut lex = Lexer::new(input.char_indices().map(|(i, c)| (i as u32, c)));
-    let out = lex.lex();
+    let input = "int fn(int i, int j, char k)".to_string();
+    let out = make_lexer(&input).lex();
+    
 
     assert_eq!(
         out,
