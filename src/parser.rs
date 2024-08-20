@@ -1,6 +1,8 @@
+use std::process::Termination;
+
 use crate::{
     ast::{
-        self, AssignStmt, AstNode, BinOp, Expr, Program, ReturnStmt,
+        self, AssignStmt, AstNode, BinOp, Expr, FnDef, Program, ReturnStmt,
         Statement, UnaryOp,
     },
     token::Token,
@@ -20,6 +22,8 @@ where
 #[derive(Debug, PartialEq)]
 pub enum ParseError {
     Invalid(Option<Token>),
+    InvalidExpected((Token, Option<Token>)),
+    InvalidExpectedIdent(Option<Token>),
     InvalidStatementTerminator(Option<Token>),
 }
 
@@ -47,17 +51,23 @@ where
         return p;
     }
 
-    pub fn parse_program(&mut self) -> Result<AstNode, ParseError> {
-        // Entry point
+    pub fn parse(&mut self) -> Result<AstNode, ParseError> {
+        let block = self.parse_block()?;
+        return Ok(AstNode::Program(block));
+    }
 
+    pub fn parse_block(&mut self) -> Result<Program, ParseError> {
         let mut statements = Vec::new();
         while let Some(ref _tok) = self.curr_token {
+            if matches!(self.curr_token, Some(Token::RBRACE)) {
+                break;
+            }
             let stmt = self.parse_statement()?;
             statements.push(stmt);
         }
-        return Ok(AstNode::Program(Program {
+        return Ok(Program {
             statements: statements,
-        }));
+        });
     }
 
     pub fn parse_statement(&mut self) -> Result<Statement, ParseError> {
@@ -67,8 +77,20 @@ where
                     let type_ident = self
                         .consume_curr_tok()
                         .expect("parse_statement `should have pre-cheked type ident token`");
-                    let assignment = self.parse_assignment(type_ident)?;
-                    Statement::Assign(assignment)
+                    match (&self.curr_token, &self.peek_token) {
+                        (&Some(Token::Ident(_)), &Some(Token::ASSIGN)) => {
+                            let assignment =
+                                self.parse_assignment(type_ident)?;
+                            Statement::Assign(assignment)
+                        }
+                        (&Some(Token::Ident(_)), &Some(Token::LPAREN)) => {
+                            let assignment = self.parse_fn_def(type_ident)?;
+                            Statement::FnDef(assignment)
+                        }
+                        (a, _) => {
+                            return Err(ParseError::Invalid(a.clone()));
+                        }
+                    }
                 }
                 Token::RETURN => {
                     self.advance();
@@ -81,16 +103,86 @@ where
                     Statement::Expr(expr)
                 }
             };
+            if let Statement::FnDef(_fn) = &stmt {
+                return Ok(stmt);
+            }
             let terminator = self.consume_curr_tok();
             if !matches!(terminator, Some(Token::SEMICOLON)) {
                 return Err(ParseError::InvalidStatementTerminator(
-                    terminator,
+                    terminator.clone(),
                 ));
             }
             return Ok(stmt);
         } else {
             return Err(ParseError::Invalid(None));
         }
+    }
+
+    pub fn parse_fn_def(
+        &mut self,
+        type_ident: Token,
+    ) -> Result<FnDef, ParseError> {
+        let name = self
+            .consume_curr_tok()
+            .expect("parse_fn_def `should have checked existence`");
+        self.advance();
+        let args = self.parse_fn_args()?;
+        // Skip the closing )
+        self.assert_curr_tok(Token::RPAREN)?;
+        self.advance();
+
+        // Skip the opening {
+        self.assert_curr_tok(Token::LBRACE)?;
+        self.advance();
+
+        let block = self.parse_block()?;
+
+        self.assert_curr_tok(Token::RBRACE)?;
+        self.advance();
+
+        if matches!(&self.curr_token, Some(Token::SEMICOLON)) {
+            // In C, a fn def can be succeeded by a ; or not
+            self.advance();
+        }
+
+        return Ok(FnDef {
+            type_: type_ident,
+            body: block,
+            args: args,
+            name: name,
+        });
+    }
+
+    pub fn parse_fn_args(
+        &mut self,
+    ) -> Result<Vec<(Token, Token)>, ParseError> {
+        let mut args = Vec::new();
+
+        while let Some(tok) = &self.curr_token {
+            match tok {
+                type_id if self.is_type_id(&type_id) => {
+                    let type_id = self
+                        .consume_curr_tok()
+                        .expect("parse_fn_args `type identifier expected`");
+
+                    if let Some(Token::Ident(_)) = self.curr_token {
+                        let ident = self
+                            .consume_curr_tok()
+                            .expect("parse_fn_ars `identifier expected`");
+                        args.push((type_id, ident))
+                    }
+                }
+                Token::RPAREN => {
+                    break;
+                }
+                _ => {
+                    let err_tok = self.consume_curr_tok();
+                    return Err(ParseError::InvalidExpectedIdent(err_tok));
+                }
+            }
+        }
+
+        return Ok(args);
     }
 
     pub fn parse_assignment(
@@ -112,7 +204,6 @@ where
                 });
             }
             (a, b) => {
-                println!("{:?} {:?}", &a, &b);
                 let err_tok = self.consume_curr_tok();
                 return Err(ParseError::Invalid(err_tok));
             }
@@ -141,7 +232,7 @@ where
                         op: op_,
                     }));
                 }
-                Token::FloatLiteral(_) | Token::IntegerLiteral(_) => {
+                Token::FloatLiteral(_) | Token::IntegerLiteral(_) | Token::Ident(_) => {
                     let lit = self.consume_curr_tok().expect("");
                     return self.parse_expr_with(
                         Expr::new(lit).expect(
@@ -231,6 +322,14 @@ where
         self.curr_token = self.peek_token.take();
         self.peek_token = next_token;
         return curr_tok;
+    }
+
+    pub fn assert_curr_tok(&mut self, token: Token) -> Result<(), ParseError> {
+        if !matches!(&self.curr_token, _token) {
+            let err_tok = self.consume_curr_tok();
+            return Err(ParseError::InvalidExpected((token, err_tok)));
+        }
+        return Ok(());
     }
 }
 
@@ -389,5 +488,50 @@ fn test_parse_return() {
                 op: Token::ADD,
             })
         }))
+    );
+}
+
+#[test]
+fn test_parse_program() {
+    let input = vec![
+        Token::INT,
+        Token::Ident("main".to_string()),
+        Token::LPAREN,
+        Token::RPAREN,
+        Token::LBRACE,
+        Token::INT,
+        Token::Ident("a".to_string()),
+        Token::ASSIGN,
+        Token::IntegerLiteral(10),
+        Token::SEMICOLON,
+        Token::RETURN,
+        Token::IntegerLiteral(0),
+        Token::SEMICOLON,
+        Token::RBRACE,
+    ];
+
+    let statements = vec![
+        Statement::Assign(AssignStmt {
+            type_: Token::INT,
+            name: Token::Ident("a".to_string()),
+            value: Expr::IntLiteral(Token::IntegerLiteral(10)),
+        }),
+        Statement::Return(ReturnStmt {
+            expr: Expr::IntLiteral(Token::IntegerLiteral(0)),
+        }),
+    ];
+    let fn_def = FnDef {
+        type_: Token::INT,
+        args: vec![],
+        name: Token::Ident("main".to_string()),
+        body: Program{statements},
+    };
+
+    let output_program = Program {
+        statements: vec![Statement::FnDef(fn_def)],
+    };
+    assert_eq!(
+        Parser::new(input.into_iter()).parse(),
+        Ok(AstNode::Program(output_program))
     );
 }

@@ -54,10 +54,19 @@ impl Display for Token {
         let mut repr;
         let display = match self {
             Self::ADD => "+",
+            Self::SUB => "-",
+            Self::STAR => "*",
+            Self::DIV => "/",
             Self::IntegerLiteral(i) => {
                 repr = format!("{}", i);
                 repr.as_str()
             },
+            Self::LPAREN => "(",
+            Self::RPAREN => ")",
+            Self::LBRACE => "{",
+            Self::RBRACE => "}",
+            Self::INT => "int",
+            Self::Ident(ident) => ident,
             _ => "NOT IMPLEMENTED"
         };
         write!(f, "{}", display)

@@ -33,9 +33,9 @@ fn main() {
         println!("{:?}", tokens);
 
         let ast = Parser::new(tokens.into_iter())
-            .parse_program()
+            .parse()
             .expect("PARSE ERROR");
 
-        println!("{:?}", ast);
+        println!("{}", ast);
     }
 }
