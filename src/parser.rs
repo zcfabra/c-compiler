@@ -172,6 +172,9 @@ where
                         args.push((type_id, ident))
                     }
                 }
+                Token::COMMA => {
+                    self.advance();
+                }
                 Token::RPAREN => {
                     break;
                 }

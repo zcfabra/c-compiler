@@ -78,8 +78,11 @@ impl Display for FnDef {
         let mut buffer = String::new();
         buffer.push_str(format!("{} {}", self.type_, self.name).as_str());
         buffer.push_str("(");
-        for (arg_type, arg_name) in &self.args {
-            buffer.push_str(format!("{} {},", arg_type, arg_name).as_str());
+        for (ix, (arg_type, arg_name)) in self.args.iter().enumerate() {
+            buffer.push_str(format!("{} {}", arg_type, arg_name).as_str());
+            if ix != self.args.len() - 1 {
+                buffer.push_str(", ");
+            }
         }
         buffer.push_str(")");
         buffer.push_str("{\n");

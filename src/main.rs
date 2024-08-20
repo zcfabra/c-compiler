@@ -30,7 +30,7 @@ fn main() {
         .lex()
         .expect("TOKENIZER ERROR");
 
-        println!("{:?}", tokens);
+        // println!("{:?}", tokens);
 
         let ast = Parser::new(tokens.into_iter())
             .parse()

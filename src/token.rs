@@ -7,6 +7,7 @@ pub enum Token {
     LBRACE,
     RBRACE,
     SEMICOLON,
+    COMMA,
 
     // Operators
     ASSIGN,

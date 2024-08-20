@@ -51,7 +51,7 @@ type IndexedCh = (u32, char);
 
 pub fn is_terminator(c: char) -> bool {
     match c {
-        ' ' | '\n' | '(' | '{' | '[' | ')' | '}' | ']' | ';' => true,
+        ' ' | '\n' | '(' | '{' | '[' | ')' | '}' | ']' | ';' | ',' => true,
         _ => false,
     }
 }
@@ -100,13 +100,13 @@ where
         while let Some((ix, ch)) = self.curr_ch {
             match ch {
                 ' ' | '\n' | '\t' => _ = self.consume_curr_char(),
-                sc@('(' | ')' | '{' | '}' | '[' | ']' | ';') => {
+                sc @ ('(' | ')' | '{' | '}' | '[' | ']' | ';' | ',') => {
                     tokens.push(self.get_single_char_token(sc, ix)?);
                 }
-                dc@('=' | '!' | '+' | '-' | '/' | '*') => {
+                dc @ ('=' | '!' | '+' | '-' | '/' | '*') => {
                     let tok = match self.get_double_char_token(dc, ix) {
                         Some(tok) => Ok(tok),
-                        None => self.get_single_char_token(ch, ix)
+                        None => self.get_single_char_token(ch, ix),
                     }?;
                     tokens.push(tok);
                 }
@@ -191,13 +191,18 @@ where
         return Ok(self.get_keyword(&acc).unwrap_or(Token::Ident(acc)));
     }
 
-    pub fn get_single_char_token(&mut self, ch: char, ix: u32) -> Result<Token, LexError> {
+    pub fn get_single_char_token(
+        &mut self,
+        ch: char,
+        ix: u32,
+    ) -> Result<Token, LexError> {
         let tok = Ok(match ch {
             '(' => Token::LPAREN,
             ')' => Token::RPAREN,
             '{' => Token::LBRACE,
             '}' => Token::RBRACE,
             ';' => Token::SEMICOLON,
+            ',' => Token::COMMA,
 
             '+' => Token::ADD,
             '-' => Token::SUB,
@@ -207,13 +212,17 @@ where
             '!' => Token::NOT,
 
             '=' => Token::ASSIGN,
-            _ => return Err(LexError::UnknownToken((ix, ch)))
+            _ => return Err(LexError::UnknownToken((ix, ch))),
         });
         let _ = self.consume_curr_char();
         return tok;
     }
 
-    pub fn get_double_char_token(&mut self, ch: char, ix: u32) -> Option<Token> {
+    pub fn get_double_char_token(
+        &mut self,
+        ch: char,
+        ix: u32,
+    ) -> Option<Token> {
         let tok = Some(match (ch, self.peek_ch) {
             ('=', Some((_, '='))) => Token::EQ,
             ('!', Some((_, '='))) => Token::NOT_EQ,
@@ -221,7 +230,7 @@ where
             ('-', Some((_, '='))) => Token::SUB_EQ,
             ('*', Some((_, '='))) => Token::MUL_EQ,
             ('/', Some((_, '='))) => Token::DIV_EQ,
-            (_, _) => return None
+            (_, _) => return None,
         });
         // Consumes current char
         _ = self.consume_curr_char();
@@ -229,7 +238,6 @@ where
         _ = self.consume_curr_char();
 
         return tok;
-        
     }
 
     pub fn get_keyword(&self, s: &String) -> Option<Token> {
@@ -426,7 +434,6 @@ fn test_if_else_parsing() {
 
 #[test]
 fn test_operators() {
-
     let prg = "= == + += - -= ! != * *= / /=";
     let mut l = Lexer::new(prg.char_indices().map(|(ix, c)| (ix as u32, c)));
 
@@ -446,6 +453,31 @@ fn test_operators() {
             Token::MUL_EQ,
             Token::DIV,
             Token::DIV_EQ,
+        ])
+    );
+}
+
+#[test]
+fn test_lex_args() {
+    let input = "int fn(int i, int j, char k)";
+    let mut lex = Lexer::new(input.char_indices().map(|(i, c)| (i as u32, c)));
+    let out = lex.lex();
+
+    assert_eq!(
+        out,
+        Ok(vec![
+            Token::INT,
+            Token::Ident("fn".to_string()),
+            Token::LPAREN,
+            Token::INT,
+            Token::Ident("i".to_string()),
+            Token::COMMA,
+            Token::INT,
+            Token::Ident("j".to_string()),
+            Token::COMMA,
+            Token::CHAR,
+            Token::Ident("k".to_string()),
+            Token::RPAREN,
         ])
     );
 }
