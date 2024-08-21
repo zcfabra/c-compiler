@@ -1,3 +1,10 @@
 /target
 .vscode
 out
+
+Dockerfile
+**.asm
+**.o
+**.s
+test
+commands.md

@@ -69,10 +69,10 @@ impl Generator {
         match bin_expr.op {
             Token::ADD => {
                 self.gen_asm_expr(&*bin_expr.l)?;
-                self.push_line("push %eax");
+                self.push_line("push %rax");
                 self.gen_asm_expr(&*bin_expr.r)?;
-                self.push_line("pop %ecx");
-                self.push_line("addl %eax, %ecx");
+                self.push_line("pop %rcx");
+                self.push_line("add %rcx, %rax");
             }
             _ => todo!()
         }
@@ -83,7 +83,7 @@ impl Generator {
     pub fn gen_asm_expr(&mut self, expr: &Expr) -> Result<(), CodeGenError> {
         match expr {
             Expr::IntLiteral(Token::IntegerLiteral(intval)) => {
-                self.push_line(format!("movl ${}, %eax", intval).as_str());
+                self.push_line(format!("mov ${}, %rax", intval).as_str());
                 Ok(())
             }
             Expr::BinaryOpExpr(bin_expr) => {

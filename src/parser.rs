@@ -115,6 +115,9 @@ where
             }
             let terminator = self.consume_curr_tok();
             if !matches!(terminator, Some(Token::SEMICOLON)) {
+                println!("TERM: {:?}", &terminator);
+                println!("AFTER: {:?}", &self.curr_token);
+                println!("PEEK: {:?}", &self.peek_token);
                 return Err(ParseError::InvalidStatementTerminator(
                     terminator.clone(),
                 ));
@@ -275,7 +278,7 @@ where
             Some(Token::RPAREN) => return Ok(captured_expr),
             Some(binop) if self.is_binary_operator(&binop) => {
                 let prec = self.get_precedence(&binop);
-                if prec <= precedence {
+                if prec < precedence {
                     return Ok(captured_expr);
                 } else {
                     let r = self.parse_expr(prec)?;

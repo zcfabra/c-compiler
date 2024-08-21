@@ -39,6 +39,8 @@ fn main() {
 
         let mut generated = Generator::new();
         generated.gen_asm(&ast).expect("CODEGEN ERROR");
-        println!("{}", generated.output);
+        let mut f = fs::File::create("out.s").expect("FILE WRITE ERR");
+        println!("{}", &generated.output);
+        f.write(generated.output.as_bytes());
     }
 }
