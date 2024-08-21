@@ -15,9 +15,11 @@ pub enum Token {
 
     ADD,
     ADD_EQ,
+    INCR,
 
     SUB,
     SUB_EQ,
+    DECR,
 
     NOT,
     NOT_EQ,
@@ -55,7 +57,11 @@ impl Display for Token {
         let mut repr;
         let display = match self {
             Self::ADD => "+",
+            Self::ADD_EQ=> "+=",
+            Self::INCR=> "++",
             Self::SUB => "-",
+            Self::SUB_EQ => "-=",
+            Self::DECR => "--",
             Self::STAR => "*",
             Self::DIV => "/",
             Self::IntegerLiteral(i) => {

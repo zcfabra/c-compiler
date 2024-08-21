@@ -1,4 +1,4 @@
-use std::fmt::{write, Display};
+use std::fmt::Display;
 
 use crate::token::Token;
 
@@ -70,7 +70,7 @@ pub struct FnDef {
     pub type_: Token,
     pub name: Token,
     pub args: Vec<(Token, Token)>,
-    pub body: Program,
+    pub body: BlockStmt,
 }
 
 impl Display for FnDef {
@@ -99,6 +99,13 @@ impl Display for FnDef {
 #[derive(Debug, PartialEq)]
 pub struct ConditionalStmt {
     condition: Expr,
+    passed: Program,
+    failed: Option<Program>
+}
+
+#[derive(Debug, PartialEq)]
+pub struct BlockStmt{
+    pub statements: Vec<Statement>
 }
 
 #[derive(Debug, PartialEq)]
@@ -108,6 +115,7 @@ pub enum Statement {
     Return(ReturnStmt),
     Expr(Expr),
     FnDef(FnDef),
+    Block(BlockStmt),
 }
 
 impl Display for Statement {
@@ -121,6 +129,9 @@ impl Display for Statement {
             }
             Statement::FnDef(fn_def) => {
                 write!(f, "{}", fn_def)
+            }
+            Statement::Expr(expr) => {
+                write!(f, "{}", expr)
             }
             _ => write!(f, "(NOT IMPLEMENTED)"),
         }

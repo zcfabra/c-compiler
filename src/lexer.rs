@@ -51,7 +51,7 @@ type IndexedCh = (u32, char);
 
 pub fn is_terminator(c: char) -> bool {
     match c {
-        ' ' | '\n' | '(' | '{' | '[' | ')' | '}' | ']' | ';' | ',' => true,
+        ' ' | '\n' | '(' | '{' | '[' | ')' | '}' | ']' | ';' | ',' | '+' | '-' => true,
         _ => false,
     }
 }
@@ -59,8 +59,7 @@ pub fn is_terminator(c: char) -> bool {
 pub fn make_lexer<'a>(
     s: &'a String,
 ) -> Lexer<Map<CharIndices<'a>, impl FnMut((usize, char)) -> (u32, char)>> {
-    let mut lx = Lexer::new(s.char_indices().map(|(i, c)| (i as u32, c)));
-    return lx;
+    return Lexer::new(s.char_indices().map(|(i, c)| (i as u32, c)));
 }
 
 pub struct Lexer<I>
@@ -234,7 +233,9 @@ where
             ('=', Some((_, '='))) => Token::EQ,
             ('!', Some((_, '='))) => Token::NOT_EQ,
             ('+', Some((_, '='))) => Token::ADD_EQ,
+            ('+', Some((_, '+'))) => Token::INCR,
             ('-', Some((_, '='))) => Token::SUB_EQ,
+            ('-', Some((_, '-'))) => Token::DECR,
             ('*', Some((_, '='))) => Token::MUL_EQ,
             ('/', Some((_, '='))) => Token::DIV_EQ,
             (_, _) => return None,

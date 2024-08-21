@@ -1,9 +1,6 @@
-use std::process::Termination;
-
 use crate::{
     ast::{
-        self, AssignStmt, AstNode, BinOp, Expr, FnDef, Program, ReturnStmt,
-        Statement, UnaryOp,
+        AssignStmt, AstNode, BinOp, BlockStmt, ConditionalStmt, Expr, FnDef, Program, ReturnStmt, Statement, UnaryOp
     },
     token::Token,
 };
@@ -42,7 +39,7 @@ where
 {
     pub fn new(tokens: I) -> Self {
         let mut p = Parser {
-            tokens: tokens,
+            tokens,
             curr_token: None,
             peek_token: None,
         };
@@ -52,11 +49,19 @@ where
     }
 
     pub fn parse(&mut self) -> Result<AstNode, ParseError> {
-        let block = self.parse_block()?;
-        return Ok(AstNode::Program(block));
+        return Ok(AstNode::Program(self.parse_program()?));
     }
 
-    pub fn parse_block(&mut self) -> Result<Program, ParseError> {
+
+    pub fn parse_program(&mut self) -> Result<Program, ParseError> {
+        let mut statements = Vec::new();
+        while let Some(ref _tok) = self.curr_token {
+            statements.push(self.parse_statement()?);
+        }
+        return Ok(Program { statements });
+    }
+
+    pub fn parse_block(&mut self) -> Result<BlockStmt, ParseError> {
         let mut statements = Vec::new();
         while let Some(ref _tok) = self.curr_token {
             if matches!(self.curr_token, Some(Token::RBRACE)) {
@@ -65,9 +70,7 @@ where
             let stmt = self.parse_statement()?;
             statements.push(stmt);
         }
-        return Ok(Program {
-            statements: statements,
-        });
+        return Ok(BlockStmt { statements });
     }
 
     pub fn parse_statement(&mut self) -> Result<Statement, ParseError> {
@@ -91,6 +94,10 @@ where
                             return Err(ParseError::Invalid(a.clone()));
                         }
                     }
+                }
+                Token::IF => {
+                    let conditional = self.parse_conditional()?;
+                    Statement::Conditional(conditional)
                 }
                 Token::RETURN => {
                     self.advance();
@@ -116,6 +123,10 @@ where
         } else {
             return Err(ParseError::Invalid(None));
         }
+    }
+
+    pub fn parse_conditional(&mut self) -> Result<ConditionalStmt, ParseError> {
+        todo!()
     }
 
     pub fn parse_fn_def(
@@ -262,8 +273,8 @@ where
         Ok(match self.consume_curr_tok() {
             None => captured_expr,
             Some(Token::RPAREN) => return Ok(captured_expr),
-            Some(tk) if self.is_binary_operator(&tk) => {
-                let prec = self.get_precedence(&tk);
+            Some(binop) if self.is_binary_operator(&binop) => {
+                let prec = self.get_precedence(&binop);
                 if prec <= precedence {
                     return Ok(captured_expr);
                 } else {
@@ -271,9 +282,16 @@ where
                     return Ok(Expr::BinaryOpExpr(BinOp {
                         l: Box::new(captured_expr),
                         r: Box::new(r),
-                        op: tk,
+                        op: binop,
                     }));
                 }
+            }
+            Some(unop) if self.is_maybe_unary_op(&unop) => {
+                // Deals with postfix unary operators i.e. x++, x--
+                let expr = Expr::UnaryOpExpr(UnaryOp {
+                    op: unop, value: Box::new(captured_expr),
+                });
+                return Ok(expr);
             }
             x @ Some(_) => return Err(ParseError::Invalid(x)),
         })
@@ -298,7 +316,7 @@ where
 
     pub fn is_maybe_unary_op(&self, tk: &Token) -> bool {
         return match tk {
-            Token::NOT => true,
+            Token::NOT | Token::INCR | Token::DECR => true,
             _ => false,
         };
     }
@@ -527,7 +545,7 @@ fn test_parse_program() {
         type_: Token::INT,
         args: vec![],
         name: Token::Ident("main".to_string()),
-        body: Program{statements},
+        body: BlockStmt{statements},
     };
 
     let output_program = Program {

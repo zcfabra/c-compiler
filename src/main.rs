@@ -1,8 +1,10 @@
 mod ast;
 mod parser;
+mod codegen;
 
 mod lexer;
 mod token;
+
 
 use std::{
     env,
@@ -10,7 +12,8 @@ use std::{
     io::{Read, Write},
 };
 
-use lexer::Lexer;
+use codegen::Generator;
+use lexer::make_lexer;
 use parser::Parser;
 
 fn main() {
@@ -21,12 +24,8 @@ fn main() {
 
         f.read_to_string(&mut buffer).expect("FAILED TO READ FILE");
 
-        let tokens = Lexer::new(
-            buffer
-                .char_indices()
-                .into_iter()
-                .map(|(i, c)| (i as u32, c)),
-        )
+        let tokens = 
+        make_lexer(&buffer)
         .lex()
         .expect("TOKENIZER ERROR");
 
@@ -37,5 +36,9 @@ fn main() {
             .expect("PARSE ERROR");
 
         println!("{}", ast);
+
+        let mut generated = Generator::new();
+        generated.gen_asm(&ast).expect("CODEGEN ERROR");
+        println!("{}", generated.output);
     }
 }
