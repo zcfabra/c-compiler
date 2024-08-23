@@ -74,6 +74,13 @@ impl Generator {
                 self.push_line("pop %rcx");
                 self.push_line("add %rcx, %rax");
             }
+            Token::STAR => {
+                self.gen_asm_expr(&*bin_expr.l)?;
+                self.push_line("push %rax");
+                self.gen_asm_expr(&*bin_expr.r)?;
+                self.push_line("pop %rbx");
+                self.push_line("mul %rbx");
+            }
             _ => todo!()
         }
 

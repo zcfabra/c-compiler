@@ -1,6 +1,7 @@
 use crate::{
     ast::{
-        AssignStmt, AstNode, BinOp, BlockStmt, ConditionalStmt, Expr, FnDef, Program, ReturnStmt, Statement, UnaryOp
+        AssignStmt, AstNode, BinOp, BlockStmt, ConditionalStmt, Expr, FnDef,
+        Program, ReturnStmt, Statement, UnaryOp,
     },
     token::Token,
 };
@@ -22,6 +23,8 @@ pub enum ParseError {
     InvalidExpected((Token, Option<Token>)),
     InvalidExpectedIdent(Option<Token>),
     InvalidStatementTerminator(Option<Token>),
+    InvalidAssignment,
+    InvalidStatement,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -51,7 +54,6 @@ where
     pub fn parse(&mut self) -> Result<AstNode, ParseError> {
         return Ok(AstNode::Program(self.parse_program()?));
     }
-
 
     pub fn parse_program(&mut self) -> Result<Program, ParseError> {
         let mut statements = Vec::new();
@@ -91,7 +93,7 @@ where
                             Statement::FnDef(assignment)
                         }
                         (a, _) => {
-                            return Err(ParseError::Invalid(a.clone()));
+                            return Err(ParseError::InvalidStatement);
                         }
                     }
                 }
@@ -102,22 +104,20 @@ where
                 Token::RETURN => {
                     self.advance();
                     Statement::Return(ReturnStmt {
-                        expr: self.parse_expr(Precedence::Lowest)?,
+                        expr: self.parse_expr(&Precedence::Lowest)?,
                     })
                 }
                 _ => {
-                    let expr = self.parse_expr(Precedence::Lowest)?;
+                    let expr = self.parse_expr(&Precedence::Lowest)?;
                     Statement::Expr(expr)
                 }
             };
             if let Statement::FnDef(_fn) = &stmt {
                 return Ok(stmt);
             }
+
             let terminator = self.consume_curr_tok();
             if !matches!(terminator, Some(Token::SEMICOLON)) {
-                println!("TERM: {:?}", &terminator);
-                println!("AFTER: {:?}", &self.curr_token);
-                println!("PEEK: {:?}", &self.peek_token);
                 return Err(ParseError::InvalidStatementTerminator(
                     terminator.clone(),
                 ));
@@ -128,7 +128,9 @@ where
         }
     }
 
-    pub fn parse_conditional(&mut self) -> Result<ConditionalStmt, ParseError> {
+    pub fn parse_conditional(
+        &mut self,
+    ) -> Result<ConditionalStmt, ParseError> {
         todo!()
     }
 
@@ -213,7 +215,7 @@ where
                 );
                 _ = self.consume_curr_tok();
 
-                let expr = self.parse_expr(Precedence::Lowest)?;
+                let expr = self.parse_expr(&Precedence::Lowest)?;
                 return Ok(AssignStmt {
                     type_: type_ident,
                     name: name,
@@ -222,34 +224,36 @@ where
             }
             (a, b) => {
                 let err_tok = self.consume_curr_tok();
-                return Err(ParseError::Invalid(err_tok));
+                return Err(ParseError::InvalidStatement);
             }
         }
     }
 
     pub fn parse_expr(
         &mut self,
-        precedence: Precedence,
+        precedence: &Precedence,
     ) -> Result<Expr, ParseError> {
         while let Some(ref t) = self.curr_token {
             match t {
                 Token::LPAREN => {
                     _ = self.consume_curr_tok();
                     // Parse what's inside the parens
-                    let n = self.parse_expr(Precedence::Lowest)?;
+                    let n = self.parse_expr(&Precedence::Lowest)?;
                     return self.parse_expr_with(n, precedence);
                 }
                 op if self.is_maybe_unary_op(&op) => {
                     let op_ = self
                         .consume_curr_tok()
                         .expect("parse_expr `should have checked op token`");
-                    let expr = self.parse_expr(Precedence::Lowest)?;
+                    let expr = self.parse_expr(&Precedence::Lowest)?;
                     return Ok(Expr::UnaryOpExpr(UnaryOp {
                         value: Box::new(expr),
                         op: op_,
                     }));
                 }
-                Token::FloatLiteral(_) | Token::IntegerLiteral(_) | Token::Ident(_) => {
+                Token::FloatLiteral(_)
+                | Token::IntegerLiteral(_)
+                | Token::Ident(_) => {
                     let lit = self.consume_curr_tok().expect("");
                     return self.parse_expr_with(
                         Expr::new(lit).expect(
@@ -260,7 +264,6 @@ where
                 }
                 _ => {}
             }
-            _ = self.consume_curr_tok();
         }
         return Err(ParseError::Invalid(None));
     }
@@ -268,35 +271,45 @@ where
     pub fn parse_expr_with(
         &mut self,
         captured_expr: Expr,
-        precedence: Precedence,
+        precedence: &Precedence,
     ) -> Result<Expr, ParseError> {
-        if let Some(Token::SEMICOLON) = self.curr_token {
-            return Ok(captured_expr);
-        }
-        Ok(match self.consume_curr_tok() {
-            None => captured_expr,
-            Some(Token::RPAREN) => return Ok(captured_expr),
+        Ok(match &self.curr_token {
+            None | Some(Token::SEMICOLON) => captured_expr,
+            Some(Token::RPAREN) => {
+                self.advance();
+                captured_expr
+            }
             Some(binop) if self.is_binary_operator(&binop) => {
                 let prec = self.get_precedence(&binop);
-                if prec < precedence {
-                    return Ok(captured_expr);
+                if prec < *precedence {
+                    captured_expr
                 } else {
-                    let r = self.parse_expr(prec)?;
-                    return Ok(Expr::BinaryOpExpr(BinOp {
-                        l: Box::new(captured_expr),
-                        r: Box::new(r),
-                        op: binop,
-                    }));
+                    let op = self
+                        .consume_curr_tok()
+                        .expect("parse_expr_with `binop`");
+                    let r = Box::new(self.parse_expr(&prec)?);
+                    let l = Box::new(captured_expr);
+                    let binexpr = Expr::BinaryOpExpr(BinOp { l, r, op });
+                    match &self.curr_token {
+                        Some(op) if self.is_binary_operator(&op) => {
+                            // Continue parsing
+                            self.parse_expr_with(binexpr, precedence)?
+                        }
+                        _ => binexpr,
+                    }
                 }
             }
             Some(unop) if self.is_maybe_unary_op(&unop) => {
                 // Deals with postfix unary operators i.e. x++, x--
                 let expr = Expr::UnaryOpExpr(UnaryOp {
-                    op: unop, value: Box::new(captured_expr),
+                    op: self
+                        .consume_curr_tok()
+                        .expect("parse_expr_with `unary`"),
+                    value: Box::new(captured_expr),
                 });
                 return Ok(expr);
             }
-            x @ Some(_) => return Err(ParseError::Invalid(x)),
+            x @ Some(_) => return Err(ParseError::Invalid(x.clone())),
         })
     }
 
@@ -368,7 +381,7 @@ fn test_parse_addition() {
         .into_iter(),
     );
 
-    let tree = p.parse_expr(Precedence::Lowest);
+    let tree = p.parse_expr(&Precedence::Lowest);
     assert_eq!(
         tree,
         Ok(Expr::BinaryOpExpr(BinOp {
@@ -416,7 +429,7 @@ fn test_parse_precedence() {
         .into_iter(),
     );
 
-    let tree = p.parse_expr(Precedence::Lowest);
+    let tree = p.parse_expr(&Precedence::Lowest);
 
     let rhs = Expr::BinaryOpExpr(BinOp {
         l: Box::new(Expr::IntLiteral(Token::IntegerLiteral(10))),
@@ -430,6 +443,43 @@ fn test_parse_precedence() {
     });
 
     assert_eq!(tree, Ok(binary));
+}
+
+#[test]
+fn test_parse_precedence_ops() {
+    let parsed = Parser::new(
+        vec![
+            Token::IntegerLiteral(20),
+            Token::STAR,
+            Token::IntegerLiteral(10),
+            Token::ADD,
+            Token::IntegerLiteral(10),
+            Token::STAR,
+            Token::IntegerLiteral(10),
+            Token::SEMICOLON,
+        ]
+        .into_iter(),
+    )
+    .parse_expr(&Precedence::Lowest);
+
+    let lhs = BinOp {
+        l: Box::new(Expr::IntLiteral(Token::IntegerLiteral(20))),
+        r: Box::new(Expr::IntLiteral(Token::IntegerLiteral(10))),
+        op: Token::STAR,
+    };
+    let rhs = BinOp {
+        l: Box::new(Expr::IntLiteral(Token::IntegerLiteral(10))),
+        r: Box::new(Expr::IntLiteral(Token::IntegerLiteral(10))),
+        op: Token::STAR,
+    };
+    let binop = BinOp {
+        l: Box::new(Expr::BinaryOpExpr(lhs)),
+        r: Box::new(Expr::BinaryOpExpr(rhs)),
+        op: Token::ADD,
+    };
+
+    let expected = Expr::BinaryOpExpr(binop);
+    assert_eq!(parsed, Ok(expected));
 }
 
 #[test]
@@ -447,7 +497,7 @@ fn test_parse_precedence_parens() {
         .into_iter(),
     );
 
-    let tree = p.parse_expr(Precedence::Lowest);
+    let tree = p.parse_expr(&Precedence::Lowest);
 
     let lhs = Expr::BinaryOpExpr(BinOp {
         l: Box::new(Expr::IntLiteral(Token::IntegerLiteral(10))),
@@ -475,7 +525,7 @@ fn test_parse_unary() {
         .into_iter(),
     );
 
-    let tree = p.parse_expr(Precedence::Lowest);
+    let tree = p.parse_expr(&Precedence::Lowest);
 
     let expr = Expr::BinaryOpExpr(BinOp {
         l: Box::new(Expr::IntLiteral(Token::IntegerLiteral(10))),
@@ -548,7 +598,7 @@ fn test_parse_program() {
         type_: Token::INT,
         args: vec![],
         name: Token::Ident("main".to_string()),
-        body: BlockStmt{statements},
+        body: BlockStmt { statements },
     };
 
     let output_program = Program {
