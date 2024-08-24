@@ -16,8 +16,10 @@ pub struct Generator {
 
 impl Generator {
     pub fn new() -> Self {
-        let output = String::new();
-        return Generator { output, indent: 0 };
+        return Generator {
+            output: String::new(),
+            indent: 0,
+        };
     }
 
     pub fn get_asm(&self) -> String {
@@ -65,7 +67,6 @@ impl Generator {
         &mut self,
         bin_expr: &BinOp,
     ) -> Result<(), CodeGenError> {
-
         match bin_expr.op {
             Token::ADD => {
                 self.gen_asm_expr(&*bin_expr.l)?;
@@ -81,7 +82,7 @@ impl Generator {
                 self.push_line("pop %rbx");
                 self.push_line("mul %rbx");
             }
-            _ => todo!()
+            _ => todo!(),
         }
 
         Ok(())
@@ -93,9 +94,7 @@ impl Generator {
                 self.push_line(format!("mov ${}, %rax", intval).as_str());
                 Ok(())
             }
-            Expr::BinaryOpExpr(bin_expr) => {
-                self.gen_asm_binary_expr(bin_expr)
-            }
+            Expr::BinaryOpExpr(bin_expr) => self.gen_asm_binary_expr(bin_expr),
             _ => {
                 todo!()
             }
@@ -112,6 +111,7 @@ impl Generator {
 
         Ok(())
     }
+
     pub fn gen_asm_fn_def(
         &mut self,
         fn_def: &FnDef,
@@ -120,6 +120,7 @@ impl Generator {
         self.push_line(format!("{}:", fn_def.name).as_str());
         self.incr_indent();
         self.gen_asm_block_statement(&fn_def.body)?;
+        self.decr_indent();
 
         Ok(())
     }
